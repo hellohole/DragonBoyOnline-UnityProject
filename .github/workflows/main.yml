@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       zip_file_path:
-        description: 'Đường dẫn tới file ZIP (ví dụ: resources/DragonBoyOnline.zip)'
+        description: 'Đường dẫn tới file ZIP (ví dụ: DragonBoyOnline.zip)'
         required: true
         default: 'DragonBoyOnline.zip'
 
@@ -13,11 +13,11 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    # --- Lấy mã nguồn ---
+    # --- Lấy mã nguồn từ repository ---
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # --- Kiểm tra và giải nén file ZIP ---
+    # --- Kiểm tra file ZIP tồn tại ---
     - name: Kiểm tra file ZIP tồn tại
       run: |
         if (-Not (Test-Path "${{ github.event.inputs.zip_file_path }}")) {
@@ -25,9 +25,9 @@ jobs:
           exit 1
         }
 
+    # --- Giải nén file ZIP ---
     - name: Giải nén DragonBoyOnline.zip
-      run: |
-        Expand-Archive -Path "${{ github.event.inputs.zip_file_path }}" -DestinationPath DragonBoyOnline
+      run: Expand-Archive -Path "${{ github.event.inputs.zip_file_path }}" -DestinationPath DragonBoyOnline
 
     # --- Tải và giải nén AssemblyCSharpPreprocessor ---
     - name: Tải AssemblyCSharpPreprocessor
@@ -66,11 +66,10 @@ jobs:
     - name: Giải nén AssetRipper.CLI
       run: Expand-Archive -Path AssetRipper.CLI.zip -DestinationPath AssetRipper.CLI
 
-    - name: Tạo dự án Unity
-      run: |
-        AssetRipper.CLI/AssetRipper.CLI.exe DragonBoyOnline DBO-UnityProject
+    - name: Tạo dự án Unity từ DragonBoyOnline
+      run: AssetRipper.CLI/AssetRipper.CLI.exe DragonBoyOnline DBO-UnityProject
 
-    # --- Dịch ngược mã nguồn ---
+    # --- Cài đặt và chạy ILSpy để dịch ngược mã ---
     - name: Cài đặt ilspycmd
       run: dotnet tool install ilspycmd -g
 
@@ -79,8 +78,8 @@ jobs:
         $assemblyCSharpPath = (Get-ChildItem -Path DragonBoyOnline -Filter Assembly-CSharp.dll -Recurse -ErrorAction Stop).FullName
         ilspycmd -p -lv CSharp7_3 --nested-directories -o decompiled-code $assemblyCSharpPath
 
-    # --- Di chuyển mã nguồn đã dịch ngược vào dự án Unity ---
-    - name: Di chuyển mã nguồn đã dịch ngược
+    # --- Di chuyển mã đã dịch ngược vào thư mục dự án Unity ---
+    - name: Di chuyển mã nguồn đã dịch ngược vào Assets
       run: |
         Remove-Item -Recurse -Force decompiled-code\Assembly-CSharp.csproj -ErrorAction SilentlyContinue
         foreach ($file in Get-ChildItem -Path decompiled-code\* -Recurse -File) {
@@ -90,12 +89,11 @@ jobs:
           if (-not (Test-Path $destinationDir)) {
             New-Item -ItemType Directory -Path $destinationDir -Force | Out-Null
           }
-          Write-Host "Moving $($file.FullName) to $destination"
           Move-Item $file.FullName -Destination $destination -Force
         }
 
-    # --- Upload artifact kết quả ---
-    - name: Upload artifact
+    # --- Upload kết quả làm artifact ---
+    - name: Upload artifact dự án Unity
       uses: actions/upload-artifact@v4
       with:
         name: DBO-UnityProject
