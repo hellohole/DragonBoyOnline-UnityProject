@@ -11,74 +11,91 @@ on:
 jobs:
   main:
     runs-on: windows-latest
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # --- Kiểm tra và giải nén file RAR ---
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Giải nén DragonBoyOnline.rar từ file người dùng upload
-        run: |
-          & 'C:\Program Files\7-Zip\7z.exe' x "${{ github.event.inputs.rar_file_path }}" -oDragonBoyOnline
+    - name: Kiểm tra file RAR tồn tại
+      run: |
+        if (-Not (Test-Path "${{ github.event.inputs.rar_file_path }}")) {
+          Write-Error "File RAR không tồn tại: ${{ github.event.inputs.rar_file_path }}"
+          exit 1
+        }
 
-      # Các bước còn lại giữ nguyên như bạn đã có
-      - name: Tải AssemblyCSharpPreprocessor
-        uses: dawidd6/action-download-artifact@v6
-        with:
-          name: AssemblyCSharpPreprocessor
-          repo: ElectroHeavenVN/Dragonboy-CommunityMod-Builds
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          workflow: build-asmpre.yml
-          workflow_conclusion: success
-          allow_forks: false
-          skip_unpack: true
+    - name: Giải nén DragonBoyOnline.rar từ file người dùng upload
+      run: |
+        & 'C:\Program Files\7-Zip\7z.exe' x "${{ github.event.inputs.rar_file_path }}" -oDragonBoyOnline
 
-      - name: Giải nén AssemblyCSharpPreprocessor
-        run: Expand-Archive -Path AssemblyCSharpPreprocessor.zip -DestinationPath AssemblyCSharpPreprocessor
+    # --- Tải và giải nén AssemblyCSharpPreprocessor ---
+    - name: Tải AssemblyCSharpPreprocessor
+      uses: dawidd6/action-download-artifact@v6
+      with:
+        name: AssemblyCSharpPreprocessor
+        repo: ElectroHeavenVN/Dragonboy-CommunityMod-Builds
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        workflow: build-asmpre.yml
+        workflow_conclusion: success
+        allow_forks: false
+        skip_unpack: true
 
-      - name: Chạy AssemblyCSharpPreprocessor
-        run: |
-          $assemblyCSharp = Get-ChildItem -Path DragonBoyOnline -Filter Assembly-CSharp.dll -Recurse -ErrorAction SilentlyContinue -Force
-          AssemblyCSharpPreprocessor/AssemblyCSharpPreprocessor.exe $assemblyCSharp.FullName -d -r -o
-          Remove-Item -Force "$($assemblyCSharp.Directory.FullName)\Assembly-CSharp-original.dll"
+    - name: Giải nén AssemblyCSharpPreprocessor
+      run: Expand-Archive -Path AssemblyCSharpPreprocessor.zip -DestinationPath AssemblyCSharpPreprocessor
 
-      - name: Tải AssetRipper.CLI
-        uses: dawidd6/action-download-artifact@v6
-        with:
-          name: AssetRipper.CLI
-          repo: ElectroHeavenVN/AssetRipper
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          workflow: publish-cli.yml
-          workflow_conclusion: success
-          branch: master
-          allow_forks: false
-          skip_unpack: true
+    - name: Chạy AssemblyCSharpPreprocessor
+      run: |
+        $assemblyCSharp = Get-ChildItem -Path DragonBoyOnline -Filter Assembly-CSharp.dll -Recurse -ErrorAction Stop
+        AssemblyCSharpPreprocessor/AssemblyCSharpPreprocessor.exe $assemblyCSharp.FullName -d -r -o
+        Remove-Item -Force "$($assemblyCSharp.Directory.FullName)\Assembly-CSharp-original.dll"
 
-      - name: Giải nén AssetRipper.CLI
-        run: Expand-Archive -Path AssetRipper.CLI.zip -DestinationPath AssetRipper.CLI
+    # --- Tải và giải nén AssetRipper ---
+    - name: Tải AssetRipper.CLI
+      uses: dawidd6/action-download-artifact@v6
+      with:
+        name: AssetRipper.CLI
+        repo: ElectroHeavenVN/AssetRipper
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        workflow: publish-cli.yml
+        workflow_conclusion: success
+        branch: master
+        allow_forks: false
+        skip_unpack: true
 
-      - name: Tạo dự án Unity
-        run: |
-          AssetRipper.CLI/AssetRipper.CLI.exe DragonBoyOnline DBO-UnityProject
+    - name: Giải nén AssetRipper.CLI
+      run: Expand-Archive -Path AssetRipper.CLI.zip -DestinationPath AssetRipper.CLI
 
-      - name: Cài đặt ilspycmd
-        run: dotnet tool install ilspycmd -g
+    - name: Tạo dự án Unity
+      run: |
+        AssetRipper.CLI/AssetRipper.CLI.exe DragonBoyOnline DBO-UnityProject
 
-      - name: Dịch ngược Assembly-CSharp.dll
-        run: |
-          $assemblyCSharpPath = (Get-ChildItem -Path DragonBoyOnline -Filter Assembly-CSharp.dll -Recurse -ErrorAction SilentlyContinue -Force).FullName
-          ilspycmd -p -lv CSharp7_3 --nested-directories -o decompiled-code $assemblyCSharpPath
+    # --- Dịch ngược mã nguồn ---
+    - name: Cài đặt ilspycmd
+      run: dotnet tool install ilspycmd -g
 
-      - name: Di chuyển mã nguồn đã dịch ngược
-        run: |
-          Remove-Item -Recurse -Force decompiled-code\Assembly-CSharp.csproj
-          foreach ($file in Get-ChildItem -Path decompiled-code\* -Recurse -File) {
-            $relativePath = $file.FullName.Substring($file.FullName.IndexOf("decompiled-code") + 16)
-            $destination = "DBO-UnityProject\ExportedProject\Assets\Scripts\Assembly-CSharp\$relativePath"
-            Write-Host "Moving $($file.FullName) to $destination"
-            Move-Item $file.FullName -Destination $destination -Force
+    - name: Dịch ngược Assembly-CSharp.dll
+      run: |
+        $assemblyCSharpPath = (Get-ChildItem -Path DragonBoyOnline -Filter Assembly-CSharp.dll -Recurse -ErrorAction Stop).FullName
+        ilspycmd -p -lv CSharp7_3 --nested-directories -o decompiled-code $assemblyCSharpPath
+
+    # --- Di chuyển mã đã dịch ngược vào dự án Unity ---
+    - name: Di chuyển mã nguồn đã dịch ngược
+      run: |
+        Remove-Item -Recurse -Force decompiled-code\Assembly-CSharp.csproj -ErrorAction SilentlyContinue
+        foreach ($file in Get-ChildItem -Path decompiled-code\* -Recurse -File) {
+          $relativePath = $file.FullName.Substring($file.FullName.IndexOf("decompiled-code") + 16)
+          $destination = "DBO-UnityProject\ExportedProject\Assets\Scripts\Assembly-CSharp\$relativePath"
+          $destinationDir = Split-Path -Parent $destination
+          if (-not (Test-Path $destinationDir)) {
+            New-Item -ItemType Directory -Path $destinationDir -Force | Out-Null
           }
+          Write-Host "Moving $($file.FullName) to $destination"
+          Move-Item $file.FullName -Destination $destination -Force
+        }
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: DBO-UnityProject
-          path: DBO-UnityProject\ExportedProject
+    # --- Upload artifact kết quả ---
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: DBO-UnityProject
+        path: DBO-UnityProject\ExportedProject
