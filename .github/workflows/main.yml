@@ -1,32 +1,33 @@
-name: Tạo dự án Unity Ngọc Rồng từ file
+name: Tạo dự án Unity Ngọc Rồng từ file ZIP
 
 on:
   workflow_dispatch:
     inputs:
-      rar_file_path:
-        description: 'Đường dẫn tới file RAR (ví dụ: resources/DragonBoyOnline.rar)'
+      zip_file_path:
+        description: 'Đường dẫn tới file ZIP (ví dụ: resources/DragonBoyOnline.zip)'
         required: true
-        default: 'DragonBoyOnline.rar'
+        default: 'DragonBoyOnline.zip'
 
 jobs:
   main:
     runs-on: windows-latest
 
     steps:
-    # --- Kiểm tra và giải nén file RAR ---
+    # --- Lấy mã nguồn ---
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Kiểm tra file RAR tồn tại
+    # --- Kiểm tra và giải nén file ZIP ---
+    - name: Kiểm tra file ZIP tồn tại
       run: |
-        if (-Not (Test-Path "${{ github.event.inputs.rar_file_path }}")) {
-          Write-Error "File RAR không tồn tại: ${{ github.event.inputs.rar_file_path }}"
+        if (-Not (Test-Path "${{ github.event.inputs.zip_file_path }}")) {
+          Write-Error "File ZIP không tồn tại: ${{ github.event.inputs.zip_file_path }}"
           exit 1
         }
 
-    - name: Giải nén DragonBoyOnline.rar từ file người dùng upload
+    - name: Giải nén DragonBoyOnline.zip
       run: |
-        & 'C:\Program Files\7-Zip\7z.exe' x "${{ github.event.inputs.rar_file_path }}" -oDragonBoyOnline
+        Expand-Archive -Path "${{ github.event.inputs.zip_file_path }}" -DestinationPath DragonBoyOnline
 
     # --- Tải và giải nén AssemblyCSharpPreprocessor ---
     - name: Tải AssemblyCSharpPreprocessor
@@ -78,7 +79,7 @@ jobs:
         $assemblyCSharpPath = (Get-ChildItem -Path DragonBoyOnline -Filter Assembly-CSharp.dll -Recurse -ErrorAction Stop).FullName
         ilspycmd -p -lv CSharp7_3 --nested-directories -o decompiled-code $assemblyCSharpPath
 
-    # --- Di chuyển mã đã dịch ngược vào dự án Unity ---
+    # --- Di chuyển mã nguồn đã dịch ngược vào dự án Unity ---
     - name: Di chuyển mã nguồn đã dịch ngược
       run: |
         Remove-Item -Recurse -Force decompiled-code\Assembly-CSharp.csproj -ErrorAction SilentlyContinue
