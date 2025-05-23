@@ -2,7 +2,7 @@ name: Tạo dự án Unity Ngọc Rồng
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Chạy mỗi ngày vào lúc 00:00 UTC
+    - cron: '0 0 * * *'  # Chạy mỗi ngày lúc 00:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -16,72 +16,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: gautamkrishnar/keepalive-workflow@v2
 
-  check-new-version:
-    name: Kiểm tra phiên bản
-    runs-on: windows-latest
-    outputs:
-      cancel: ${{ steps.check_ver.outputs.cancel }}
-      newVer: ${{ steps.check_ver.outputs.newVer }}
-    permissions:
-      actions: write
-    steps:
-      - name: Restore cache
-        id: cache-restore
-        uses: actions/cache/restore@v4
-        with:
-          path: latest-version.txt
-          key: latest-version
-          
-      - name: Lấy phiên bản mới nhất và so sánh
-        id: check_ver
-        run: |
-          $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-          $session.UserAgent = "GitHub Actions (${{ github.repository }})"
-          $webHTML = (Invoke-WebRequest -UseBasicParsing -Uri "https://ngocrongonline.com/" -WebSession $session).Content
-          $webHTML = $webHTML.Substring($webHTML.IndexOf("https://ngocrongonline.com/images/pc.png"))
-          $newVer = $webHTML.Substring($webHTML.IndexOf("</span>") - 3, 3)
-          if (Test-Path latest-version.txt) {
-            $ver = Get-Content latest-version.txt
-          }
-          else {
-            $ver = "000"
-          }
-          if ($newVer -ne $ver) {
-            Set-Content -Path latest-version.txt -Value $newVer
-            echo cancel=false | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-            echo newVer=$newVer | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-          } else {
-            echo cancel=true | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
-          }
-          
-      - name: Xóa cache trước đó
-        if: steps.cache-restore.outputs.cache-hit == 'true'
-        continue-on-error: true
-        run: gh cache delete "latest-version" --repo ${{ github.repository }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Lưu cache mới
-        uses: actions/cache/save@v4
-        with: 
-          path: latest-version.txt
-          key: latest-version
-
   main:
+    name: Tải và tạo dự án Unity
     runs-on: windows-latest
-    needs: [check-new-version]
     permissions:
       contents: write
-    if: needs.check-new-version.outputs.cancel == 'false'
     steps:
-      - name: Tải xuống phiên bản Ngọc Rồng Online mới nhất từ trang chủ và giải nén
+      - name: Tải xuống phiên bản Ngọc Rồng Online và giải nén
         run: |
-          $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-          $session.UserAgent = "GitHub Actions (${{ github.repository }})"
-          $webHTML = (Invoke-WebRequest -UseBasicParsing -Uri "https://ngocrongonline.com/" -WebSession $session).Content
-          $webHTML = $webHTML.Substring($webHTML.IndexOf("com.bluedragonss.boysss"), 500)
           $link = "http://dl.teamobi.com/drive/get/index.php?id=wd"
-          Invoke-WebRequest -UseBasicParsing -Uri $link -Method "POST" -WebSession $session -ContentType "application/x-www-form-urlencoded" -Body "submit=1" -OutFile "DragonBoyOnline.rar"
+          Invoke-WebRequest -UseBasicParsing -Uri $link -Method "POST" -ContentType "application/x-www-form-urlencoded" -Body "submit=1" -OutFile "DragonBoyOnline.rar"
           & 'C:\Program Files\7-Zip\7z.exe' x DragonBoyOnline.rar -oDragonBoyOnline
 
       - name: Tải AssemblyCSharpPreprocessor
@@ -154,7 +98,7 @@ jobs:
         with:
           files: DBO-UnityProject.zip
           token: ${{ secrets.GITHUB_TOKEN }}
-          name: DBO-UnityProject v${{ needs.check-new-version.outputs.newVer }}
+          name: DBO-UnityProject
           draft: false
           prerelease: false
-          tag_name: v${{ needs.check-new-version.outputs.newVer }}
+          tag_name: "latest"
