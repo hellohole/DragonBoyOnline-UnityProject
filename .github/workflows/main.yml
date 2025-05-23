@@ -1,33 +1,25 @@
-name: Tạo dự án Unity Ngọc Rồng
+name: Tạo dự án Unity Ngọc Rồng từ file
 
 on:
-  schedule:
-    - cron: '0 0 * * *'  # Chạy mỗi ngày lúc 00:00 UTC
   workflow_dispatch:
-
-permissions:
-  actions: write
+    inputs:
+      rar_file_path:
+        description: 'Đường dẫn tới file RAR (ví dụ: resources/DragonBoyOnline.rar)'
+        required: true
+        default: 'DragonBoyOnline.rar'
 
 jobs:
-  cronjob-based-github-action:
-    name: Cronjob based github action (keep workflow alive)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: gautamkrishnar/keepalive-workflow@v2
-
   main:
-    name: Tải và tạo dự án Unity
     runs-on: windows-latest
-    permissions:
-      contents: write
     steps:
-      - name: Tải xuống phiên bản Ngọc Rồng Online và giải nén
-        run: |
-          $link = "http://dl.teamobi.com/drive/get/index.php?id=wd"
-          Invoke-WebRequest -UseBasicParsing -Uri $link -Method "POST" -ContentType "application/x-www-form-urlencoded" -Body "submit=1" -OutFile "DragonBoyOnline.rar"
-          & 'C:\Program Files\7-Zip\7z.exe' x DragonBoyOnline.rar -oDragonBoyOnline
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      - name: Giải nén DragonBoyOnline.rar từ file người dùng upload
+        run: |
+          & 'C:\Program Files\7-Zip\7z.exe' x "${{ github.event.inputs.rar_file_path }}" -oDragonBoyOnline
+
+      # Các bước còn lại giữ nguyên như bạn đã có
       - name: Tải AssemblyCSharpPreprocessor
         uses: dawidd6/action-download-artifact@v6
         with:
@@ -48,7 +40,7 @@ jobs:
           AssemblyCSharpPreprocessor/AssemblyCSharpPreprocessor.exe $assemblyCSharp.FullName -d -r -o
           Remove-Item -Force "$($assemblyCSharp.Directory.FullName)\Assembly-CSharp-original.dll"
 
-      - name: Tải xuống AssetRipper.CLI
+      - name: Tải AssetRipper.CLI
         uses: dawidd6/action-download-artifact@v6
         with:
           name: AssetRipper.CLI
@@ -68,8 +60,7 @@ jobs:
           AssetRipper.CLI/AssetRipper.CLI.exe DragonBoyOnline DBO-UnityProject
 
       - name: Cài đặt ilspycmd
-        run: |
-          dotnet tool install ilspycmd -g
+        run: dotnet tool install ilspycmd -g
 
       - name: Dịch ngược Assembly-CSharp.dll
         run: |
@@ -80,8 +71,10 @@ jobs:
         run: |
           Remove-Item -Recurse -Force decompiled-code\Assembly-CSharp.csproj
           foreach ($file in Get-ChildItem -Path decompiled-code\* -Recurse -File) {
-            Write-Host "Moving $($file.FullName) to DBO-UnityProject\ExportedProject\Assets\Scripts\Assembly-CSharp\$($file.FullName.Substring($file.FullName.IndexOf('decompiled-code\') + 16))"
-            Move-Item $file.FullName -Destination "DBO-UnityProject\ExportedProject\Assets\Scripts\Assembly-CSharp\$($file.FullName.Substring($file.FullName.IndexOf('decompiled-code\') + 16))" -Force
+            $relativePath = $file.FullName.Substring($file.FullName.IndexOf("decompiled-code") + 16)
+            $destination = "DBO-UnityProject\ExportedProject\Assets\Scripts\Assembly-CSharp\$relativePath"
+            Write-Host "Moving $($file.FullName) to $destination"
+            Move-Item $file.FullName -Destination $destination -Force
           }
 
       - name: Upload artifact
@@ -89,16 +82,3 @@ jobs:
         with:
           name: DBO-UnityProject
           path: DBO-UnityProject\ExportedProject
-
-      - name: Nén dự án Unity
-        run: Compress-Archive -Path DBO-UnityProject\ExportedProject -DestinationPath DBO-UnityProject.zip
-
-      - name: Phát hành artifact
-        uses: softprops/action-gh-release@v2
-        with:
-          files: DBO-UnityProject.zip
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: DBO-UnityProject
-          draft: false
-          prerelease: false
-          tag_name: "latest"
