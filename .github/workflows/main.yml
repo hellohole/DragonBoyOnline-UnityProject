@@ -1,10 +1,13 @@
 name: Tạo dự án Unity Ngọc Rồng
+
 on:
   schedule:
-  - cron: '0 0 * * *'
+    - cron: '0 0 * * *'  # Chạy mỗi ngày vào lúc 00:00 UTC
   workflow_dispatch:
+
 permissions:
   actions: write
+
 jobs:
   cronjob-based-github-action:
     name: Cronjob based github action (keep workflow alive)
@@ -12,6 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: gautamkrishnar/keepalive-workflow@v2
+
   check-new-version:
     name: Kiểm tra phiên bản
     runs-on: windows-latest
@@ -27,6 +31,7 @@ jobs:
         with:
           path: latest-version.txt
           key: latest-version
+          
       - name: Lấy phiên bản mới nhất và so sánh
         id: check_ver
         run: |
@@ -48,17 +53,20 @@ jobs:
           } else {
             echo cancel=true | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
           }
+          
       - name: Xóa cache trước đó
         if: steps.cache-restore.outputs.cache-hit == 'true'
         continue-on-error: true
         run: gh cache delete "latest-version" --repo ${{ github.repository }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
       - name: Lưu cache mới
         uses: actions/cache/save@v4
         with: 
           path: latest-version.txt
           key: latest-version
+
   main:
     runs-on: windows-latest
     needs: [check-new-version]
@@ -66,16 +74,16 @@ jobs:
       contents: write
     if: needs.check-new-version.outputs.cancel == 'false'
     steps:
-      # to do: check new version
       - name: Tải xuống phiên bản Ngọc Rồng Online mới nhất từ trang chủ và giải nén
         run: |
           $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
           $session.UserAgent = "GitHub Actions (${{ github.repository }})"
           $webHTML = (Invoke-WebRequest -UseBasicParsing -Uri "https://ngocrongonline.com/" -WebSession $session).Content
           $webHTML = $webHTML.Substring($webHTML.IndexOf("com.bluedragonss.boysss"), 500)
-         $link = "http://dl.teamobi.com/drive/get/index.php?id=wd"
-    Invoke-WebRequest -UseBasicParsing -Uri $link -Method "POST" -WebSession $session -ContentType "application/x-www-form-urlencoded" -Body "submit=1" -OutFile "DragonBoyOnline.rar"
-    & 'C:\Program Files\7-Zip\7z.exe' x DragonBoyOnline.rar -oDragonBoyOnline
+          $link = "http://dl.teamobi.com/drive/get/index.php?id=wd"
+          Invoke-WebRequest -UseBasicParsing -Uri $link -Method "POST" -WebSession $session -ContentType "application/x-www-form-urlencoded" -Body "submit=1" -OutFile "DragonBoyOnline.rar"
+          & 'C:\Program Files\7-Zip\7z.exe' x DragonBoyOnline.rar -oDragonBoyOnline
+
       - name: Tải AssemblyCSharpPreprocessor
         uses: dawidd6/action-download-artifact@v6
         with:
@@ -86,13 +94,16 @@ jobs:
           workflow_conclusion: success
           allow_forks: false
           skip_unpack: true
+
       - name: Giải nén AssemblyCSharpPreprocessor
         run: Expand-Archive -Path AssemblyCSharpPreprocessor.zip -DestinationPath AssemblyCSharpPreprocessor
+
       - name: Chạy AssemblyCSharpPreprocessor
         run: |
           $assemblyCSharp = Get-ChildItem -Path DragonBoyOnline -Filter Assembly-CSharp.dll -Recurse -ErrorAction SilentlyContinue -Force
           AssemblyCSharpPreprocessor/AssemblyCSharpPreprocessor.exe $assemblyCSharp.FullName -d -r -o
           Remove-Item -Force "$($assemblyCSharp.Directory.FullName)\Assembly-CSharp-original.dll"
+
       - name: Tải xuống AssetRipper.CLI
         uses: dawidd6/action-download-artifact@v6
         with:
@@ -104,18 +115,23 @@ jobs:
           branch: master
           allow_forks: false
           skip_unpack: true
+
       - name: Giải nén AssetRipper.CLI
         run: Expand-Archive -Path AssetRipper.CLI.zip -DestinationPath AssetRipper.CLI
+
       - name: Tạo dự án Unity
         run: |
           AssetRipper.CLI/AssetRipper.CLI.exe DragonBoyOnline DBO-UnityProject
+
       - name: Cài đặt ilspycmd
         run: |
           dotnet tool install ilspycmd -g
+
       - name: Dịch ngược Assembly-CSharp.dll
         run: |
           $assemblyCSharpPath = (Get-ChildItem -Path DragonBoyOnline -Filter Assembly-CSharp.dll -Recurse -ErrorAction SilentlyContinue -Force).FullName
           ilspycmd -p -lv CSharp7_3 --nested-directories -o decompiled-code $assemblyCSharpPath
+
       - name: Di chuyển mã nguồn đã dịch ngược
         run: |
           Remove-Item -Recurse -Force decompiled-code\Assembly-CSharp.csproj
@@ -123,13 +139,16 @@ jobs:
             Write-Host "Moving $($file.FullName) to DBO-UnityProject\ExportedProject\Assets\Scripts\Assembly-CSharp\$($file.FullName.Substring($file.FullName.IndexOf('decompiled-code\') + 16))"
             Move-Item $file.FullName -Destination "DBO-UnityProject\ExportedProject\Assets\Scripts\Assembly-CSharp\$($file.FullName.Substring($file.FullName.IndexOf('decompiled-code\') + 16))" -Force
           }
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: DBO-UnityProject
           path: DBO-UnityProject\ExportedProject
+
       - name: Nén dự án Unity
         run: Compress-Archive -Path DBO-UnityProject\ExportedProject -DestinationPath DBO-UnityProject.zip
+
       - name: Phát hành artifact
         uses: softprops/action-gh-release@v2
         with:
